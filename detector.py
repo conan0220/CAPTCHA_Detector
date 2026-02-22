@@ -42,8 +42,8 @@ def extract_conf_any(r):
             return floats[0]
     return None
 
-def digits_only(s):
-    return "".join(re.findall(r"\d", s))
+def alnum_case_sensitive(s):
+    return "".join(re.findall(r"[A-Za-z0-9]", s))
 
 def preprocess_variants(bgr):
     h, w = bgr.shape[:2]
@@ -94,7 +94,7 @@ def recognize_sequence_with_conf(ocr, img_gray_or_bin):
     r = ocr.ocr(img_gray_or_bin, det=False, rec=True, cls=False)
     txt = extract_text_any(r)
     conf = extract_conf_any(r)
-    s = digits_only(txt)
+    s = alnum_case_sensitive(txt)
     return s, conf
 
 def score_candidate(s, conf):
@@ -105,7 +105,7 @@ def score_candidate(s, conf):
     return base + c * 100.0
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="CAPTCHA numeric OCR")
+    parser = argparse.ArgumentParser(description="CAPTCHA alphanumeric OCR")
     parser.add_argument(
         "--image",
         required=True,
