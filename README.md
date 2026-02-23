@@ -1,13 +1,17 @@
 ﻿# CAPTCHA 英數辨識（CPU 版本）
 
-本專案使用 **PaddleOCR（僅 CPU）** 進行 CAPTCHA 圖片辨識（大小寫英文字母 + 數字）。
+本專案使用 **PaddleOCR（僅 CPU）** 進行 CAPTCHA 圖片辨識，支援三種模式：
+
+- `numeric`：純數字（0-9）
+- `alpha`：純英文（A-Z、a-z）
+- `alnum`：英文數字混合（A-Z、a-z、0-9）
 
 本程式特點：
 
 - 多種影像前處理（縮放、灰階化、二值化、形態學處理）
 - 採用序列辨識模式（不切割單一字元）
-- 自動過濾非英數字元
-- 支援動態長度英數字串（不固定長度）
+- 可選擇純數字 / 純英文 / 英數混合
+- 支援動態長度字串（不固定長度）
 - 完全離線執行
 
 ---
@@ -42,17 +46,23 @@ conda activate paddleocr_cpu
 
 ## 執行方式
 
-目前主程式為 `detector.py`，請使用 `--image` 參數指定圖片路徑：
+目前主程式為 `detector.py`，請使用 `--image` 指定圖片，`--mode` 指定辨識模式，`--length` 指定位數：
 
 ```bash
 # 指令格式
-python detector.py --image <圖片路徑>
+python detector.py --image <圖片路徑> --mode <numeric|alpha|alnum> --length <位數>
 
-# 範例 (測試資料夾內的 test0.png)
-python detector.py --image test_data/test0.png
+# 範例：純數字 + 固定 6 碼
+python detector.py --image test_data/test0.png --mode numeric --length 6
+
+# 範例：純英文 + 固定 5 碼
+python detector.py --image test_data/test1.png --mode alpha --length 5
+
+# 範例：英數混合（預設模式，位數自動）
+python detector.py --image test_data/test2.png --mode alnum
 ```
 
-執行後會輸出一行英數字串，例如：
+執行後會輸出一行符合模式的字串，例如：
 
 ```text
 aB95x7
@@ -89,7 +99,7 @@ CAPTCHA_Detector/
 2. 灰階化與模糊處理
 3. 產生多種二值化版本
 4. 進行序列辨識（`det=False`）
-5. 只保留英數字元（A-Z、a-z、0-9）
+5. 依模式過濾字元（數字 / 英文 / 英數混合）
 6. 自動選擇最佳結果
 
 此方法可避免切字錯誤問題，特別適合：
@@ -104,7 +114,7 @@ CAPTCHA_Detector/
 ## 特點
 
 - 僅使用 CPU（不需 GPU）
-- 無固定英數長度限制
+- 無固定字串長度限制
 - 完全本地執行
 - 適用於重疊與干擾型驗證碼
 
@@ -114,7 +124,7 @@ CAPTCHA_Detector/
 
 新增檔案：
 
-- `api_server.py`：提供 `POST /solve`，上傳圖片後回傳辨識文字。
+- `api_server.py`：提供 `POST /solve`，上傳圖片後回傳辨識文字（支援 `mode`、`length`）。
 - `tampermonkey.user.js`：在指定網域偵測 CAPTCHA，呼叫本機 API，自動回填欄位。
 
 先安裝 API 需要套件：
@@ -127,13 +137,22 @@ pip install fastapi uvicorn python-multipart
 啟動 API：
 
 ```bash
-uvicorn api_server:app --host 127.0.0.1 --port 8000
+uvicorn api_server:app --host 127.0.0.1 --port 65435
 ```
 
 測試健康檢查：
 
 ```bash
-curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:65435/health
+```
+
+測試辨識 API（可指定 `mode` 與 `length`）：
+
+```bash
+curl -X POST "http://127.0.0.1:65435/solve" ^
+  -F "file=@test_data/test0.png" ^
+  -F "mode=numeric" ^
+  -F "length=6"
 ```
 
 在 Tampermonkey 匯入 `tampermonkey.user.js` 後，請先修改：
@@ -142,6 +161,8 @@ curl http://127.0.0.1:8000/health
 - `CONFIG.captchaImageSelector` / `CONFIG.captchaCanvasSelector`
 - `CONFIG.captchaInputSelector`
 - `CONFIG.captchaRefreshSelector`（若頁面有刷新按鈕）
+- `CONFIG.ocrMode`（`numeric` / `alpha` / `alnum`）
+- `CONFIG.captchaLength`（0 為自動；例如 6 代表固定 6 碼）
 
 ---
 

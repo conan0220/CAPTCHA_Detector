@@ -4,6 +4,8 @@ import re
 import argparse
 from paddleocr import PaddleOCR
 
+VALID_MODES = ("numeric", "alpha", "alnum")
+
 def extract_text_any(r):
     if r is None:
         return ""
@@ -42,8 +44,14 @@ def extract_conf_any(r):
             return floats[0]
     return None
 
-def alnum_case_sensitive(s):
-    return "".join(re.findall(r"[A-Za-z0-9]", s))
+def filter_by_mode(s, mode):
+    if mode == "numeric":
+        return "".join(re.findall(r"\d", s))
+    if mode == "alpha":
+        return "".join(re.findall(r"[A-Za-z]", s))
+    if mode == "alnum":
+        return "".join(re.findall(r"[A-Za-z0-9]", s))
+    raise ValueError(f"Unsupported mode: {mode}")
 
 def preprocess_variants(bgr):
     h, w = bgr.shape[:2]
@@ -90,29 +98,40 @@ def preprocess_variants(bgr):
         uniq.append(im)
     return uniq
 
-def recognize_sequence_with_conf(ocr, img_gray_or_bin):
+def recognize_sequence_with_conf(ocr, img_gray_or_bin, mode):
     r = ocr.ocr(img_gray_or_bin, det=False, rec=True, cls=False)
     txt = extract_text_any(r)
     conf = extract_conf_any(r)
-    s = alnum_case_sensitive(txt)
+    s = filter_by_mode(txt, mode)
     return s, conf
 
-def score_candidate(s, conf):
+def score_candidate(s, conf, expected_length=None):
     if not s:
         return -1e9
     base = min(len(s), 12) * 10
+    if expected_length is not None:
+        # Prioritize candidates matching the expected CAPTCHA length.
+        if len(s) == expected_length:
+            base += 500
+        else:
+            base -= abs(len(s) - expected_length) * 120
     c = conf if conf is not None else 0.0
     return base + c * 100.0
 
 
-def solve_captcha_bgr(ocr, bgr):
+def solve_captcha_bgr(ocr, bgr, mode="alnum", expected_length=None):
+    if mode not in VALID_MODES:
+        raise ValueError(f"Invalid mode: {mode}. Use one of: {', '.join(VALID_MODES)}")
+    if expected_length is not None and expected_length <= 0:
+        raise ValueError("expected_length must be a positive integer")
+
     best_s = ""
     best_conf = None
     best_score = -1e18
 
     for im in preprocess_variants(bgr):
-        s, conf = recognize_sequence_with_conf(ocr, im)
-        sc = score_candidate(s, conf)
+        s, conf = recognize_sequence_with_conf(ocr, im, mode)
+        sc = score_candidate(s, conf, expected_length=expected_length)
         if sc > best_score:
             best_score = sc
             best_s = s
@@ -121,25 +140,40 @@ def solve_captcha_bgr(ocr, bgr):
     return best_s, best_conf
 
 
-def solve_captcha_image_path(ocr, image_path):
+def solve_captcha_image_path(ocr, image_path, mode="alnum", expected_length=None):
     bgr = cv2.imread(image_path)
     if bgr is None:
         raise FileNotFoundError(f"Cannot read image: {image_path}")
-    return solve_captcha_bgr(ocr, bgr)
+    return solve_captcha_bgr(ocr, bgr, mode=mode, expected_length=expected_length)
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="CAPTCHA alphanumeric OCR")
+    parser = argparse.ArgumentParser(description="CAPTCHA OCR")
     parser.add_argument(
         "--image",
         required=True,
         help="Path to the input image, e.g. test_data/test0.png",
+    )
+    parser.add_argument(
+        "--mode",
+        default="alnum",
+        choices=VALID_MODES,
+        help="Recognition mode: numeric (digits), alpha (letters), alnum (letters+digits)",
+    )
+    parser.add_argument(
+        "--length",
+        type=int,
+        default=0,
+        help="Expected CAPTCHA length; 0 means auto (no fixed length)",
     )
     return parser.parse_args()
 
 def main():
     args = parse_args()
     ocr = PaddleOCR(lang="en", use_angle_cls=False, show_log=False)
-    best_s, _ = solve_captcha_image_path(ocr, args.image)
+    expected_length = args.length if args.length > 0 else None
+    best_s, _ = solve_captcha_image_path(
+        ocr, args.image, mode=args.mode, expected_length=expected_length
+    )
 
     print(best_s)
 

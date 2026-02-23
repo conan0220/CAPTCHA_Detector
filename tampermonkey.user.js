@@ -21,7 +21,9 @@
       "body > table:nth-child(2) > tbody > tr > td:nth-child(1) > table > tbody > tr > td > div > div:nth-child(1) > form > input:nth-child(13)",
     captchaRefreshSelector: "",
     submitSelector: "",
-    apiUrl: "http://127.0.0.1:8000/solve",
+    apiUrl: "http://127.0.0.1:65435/solve",
+    ocrMode: "alnum", // numeric | alpha | alnum
+    captchaLength: 0, // 0 means auto, e.g. 6 for fixed-length CAPTCHA
     maxRetries: 3,
     retryDelayMs: 1000,
     minTextLength: 3,
@@ -79,6 +81,8 @@
   function callLocalOcr(blob) {
     const formData = new FormData();
     formData.append("file", blob, "captcha.png");
+    formData.append("mode", CONFIG.ocrMode);
+    formData.append("length", String(CONFIG.captchaLength || 0));
 
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
