@@ -104,6 +104,29 @@ def score_candidate(s, conf):
     c = conf if conf is not None else 0.0
     return base + c * 100.0
 
+
+def solve_captcha_bgr(ocr, bgr):
+    best_s = ""
+    best_conf = None
+    best_score = -1e18
+
+    for im in preprocess_variants(bgr):
+        s, conf = recognize_sequence_with_conf(ocr, im)
+        sc = score_candidate(s, conf)
+        if sc > best_score:
+            best_score = sc
+            best_s = s
+            best_conf = conf
+
+    return best_s, best_conf
+
+
+def solve_captcha_image_path(ocr, image_path):
+    bgr = cv2.imread(image_path)
+    if bgr is None:
+        raise FileNotFoundError(f"Cannot read image: {image_path}")
+    return solve_captcha_bgr(ocr, bgr)
+
 def parse_args():
     parser = argparse.ArgumentParser(description="CAPTCHA alphanumeric OCR")
     parser.add_argument(
@@ -115,20 +138,8 @@ def parse_args():
 
 def main():
     args = parse_args()
-    bgr = cv2.imread(args.image)
-    if bgr is None:
-        raise FileNotFoundError(f"Cannot read image: {args.image}")
     ocr = PaddleOCR(lang="en", use_angle_cls=False, show_log=False)
-
-    best_s = ""
-    best_score = -1e18
-
-    for im in preprocess_variants(bgr):
-        s, conf = recognize_sequence_with_conf(ocr, im)
-        sc = score_candidate(s, conf)
-        if sc > best_score:
-            best_score = sc
-            best_s = s
+    best_s, _ = solve_captcha_image_path(ocr, args.image)
 
     print(best_s)
 
